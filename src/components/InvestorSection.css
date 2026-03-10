@@ -1,0 +1,85 @@
+.investor-wrapper {
+  padding: 40px;
+}
+
+.get-btn {
+  background: #00c896;
+  color: black;
+  padding: 12px 24px;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: 0.3s;
+}
+
+.get-btn:hover {
+  background: #00e0a8;
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.7);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.modal {
+  background: #111;
+  padding: 30px;
+  width: 800px;
+  border-radius: 12px;
+  color: white;
+  box-shadow: 0 0 40px rgba(0,0,0,0.6);
+}
+
+.investor-form input,
+.investor-form textarea {
+  width: 100%;
+  padding: 10px;
+  margin-bottom: 15px;
+  background: #1c1c1c;
+  border: 1px solid #333;
+  border-radius: 6px;
+  color: white;
+}
+
+.grid {
+  display: flex;
+  gap: 20px;
+}
+
+.column {
+  flex: 1;
+}
+
+.checkbox {
+  display: flex;
+  gap: 10px;
+  font-size: 14px;
+  margin-bottom: 20px;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.cancel {
+  background: #444;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+}
+
+.submit {
+  background: #00c896;
+  color: black;
+  border: none;
+  padding: 8px 18px;
+  border-radius: 6px;
+}
