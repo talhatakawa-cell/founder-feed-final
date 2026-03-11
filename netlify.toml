@@ -1,5 +1,5 @@
 [[redirects]]
   from = "/api/*"
-  to = "https://founder-feed-1.onrender.com/api/:splat"
+  to = "https://founder-feed-5.onrender.com/:splat"
   status = 200
   force = true
