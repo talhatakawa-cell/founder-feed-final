@@ -24,6 +24,13 @@ import CreateInvestor from "./pages/CreateInvestor";
 import InvestorDetails from "./pages/InvestorDetails";
 import FindPartnerPage from "./pages/FindPartnerPage";
 import { useLocation } from "react-router-dom";
+import { auth } from "./firebase";
+import {
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword
+} from "firebase/auth";
+import { signOut } from "firebase/auth";
+import { onAuthStateChanged } from "firebase/auth";
 // --- Components ---
 
 function AuthPage({ onLogin }: { onLogin: (user: User) => void }) {
@@ -38,31 +45,47 @@ function AuthPage({ onLogin }: { onLogin: (user: User) => void }) {
 
 const handleSubmit = async (e: React.FormEvent) => {
   e.preventDefault();
-  setError('');
-  const endpoint = isLogin ? '/api/auth/login' : '/api/auth/signup';
-  const body = isLogin ? { email, password } : { email, password, name, startup_name: startup, role };
+  setError("");
 
   try {
-    const res = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    
-    if (res.ok) {
-      const data = await res.json();
-      onLogin(data.user);
-      navigate('/');
+    let userCredential;
+
+    if (isLogin) {
+      userCredential = await signInWithEmailAndPassword(auth, email, password);
     } else {
-      try {
-        const data = await res.json();
-        setError(data.error || 'Authentication failed');
-      } catch (e) {
-        setError('Authentication failed (Server Error)');
-      }
+      userCredential = await createUserWithEmailAndPassword(auth, email, password);
     }
-  } catch (err) {
-    setError('Something went wrong. Please try again.');
+
+    // Firebase token
+    const token = await userCredential.user.getIdToken();
+
+    // send token to backend
+    const res = await fetch("/api/auth/bootstrap", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        name,
+        startup_name: startup,
+        role
+      })
+    });
+
+    if (!res.ok) {
+      const data = await res.json();
+      setError(data.error || "Authentication failed");
+      return;
+    }
+
+    const user = await res.json();
+    onLogin(user);
+    navigate("/");
+
+  } catch (err: any) {
+    console.error(err);
+    setError(err.message || "Authentication failed");
   }
 };
   return (
@@ -1136,30 +1159,44 @@ export default function App() {
 
   const [unreadCount, setUnreadCount] = useState(0);
 
-  useEffect(() => {
-    checkAuth();
-  }, []);
-
-  const checkAuth = async () => {
+useEffect(() => {
+  const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
     try {
-      const res = await fetch('/api/auth/me');
-      const contentType = res.headers.get('content-type');
-      if (res.ok && contentType && contentType.includes('application/json')) {
+      if (!firebaseUser) {
+        setUser(null);
+        setLoading(false);
+        return;
+      }
+
+      const token = await firebaseUser.getIdToken();
+
+      const res = await fetch("/api/auth/me", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (res.ok) {
         const data = await res.json();
         setUser(data);
+      } else {
+        setUser(null);
       }
+
     } catch (err) {
-      console.error('Auth check failed:', err);
+      console.error("Auth check failed:", err);
+      setUser(null);
     } finally {
       setLoading(false);
     }
-  };
-  
+  });
 
+  return () => unsubscribe();
+}, []);
   const handleLogout = async () => {
-    await fetch('/api/auth/logout', { method: 'POST' });
-    setUser(null);
-  };
+  await signOut(auth);
+  setUser(null);
+};
   useEffect(() => {
   if (!user) return;
 
