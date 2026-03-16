@@ -8,7 +8,10 @@ import { Server } from "socket.io";
 import multer from "multer";
 import fs from "fs";
 import cors from "cors";
-import admin from "firebase-admin";
+import jwt from "jsonwebtoken";
+
+const SUPABASE_JWT_SECRET = "NI2AZvKXLRS+w0Npdil2C7ZqAFO5RcyfFrLHU8pm6MyEAs3vd1ViL6l91RYJv//2FOZKFLBQhhsTFZ0OBYCqUQ==";
+
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -17,20 +20,7 @@ const DB_PATH =
 const db = new Database(DB_PATH);
 db.pragma("foreign_keys = ON");
 
-// Firebase Admin
-if (!admin.apps.length) {
-  const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
 
-  if (serviceAccountJson) {
-    admin.initializeApp({
-      credential: admin.credential.cert(JSON.parse(serviceAccountJson)),
-    });
-  } else {
-    admin.initializeApp({
-      credential: admin.credential.applicationDefault(),
-    });
-  }
-}
 
 // Patch BigInt to work with JSON.stringify
 (BigInt.prototype as any).toJSON = function () {
@@ -318,46 +308,25 @@ function getUserById(id: number) {
     .get(id);
 }
 
-function upsertUserFromFirebase(decoded: admin.auth.DecodedIdToken) {
+function upsertUserFromToken(decoded: any) {
+
   const email = decoded.email;
+
   if (!email) {
-    throw new Error("Firebase token does not include email");
+    throw new Error("Token does not include email");
   }
 
   let user: any = db.prepare("SELECT * FROM users WHERE email = ?").get(email);
 
   if (!user) {
-    const result = db
-      .prepare(
-        `
-        INSERT INTO users (email, password, name, startup_name, role, profile_picture)
-        VALUES (?, '', ?, '', 'founder', ?)
-      `
-      )
-      .run(
-        email,
-        decoded.name || "User",
-        typeof decoded.picture === "string" ? decoded.picture : null
-      );
 
-    user = db
-      .prepare("SELECT * FROM users WHERE id = ?")
+    const result = db.prepare(`
+      INSERT INTO users (email, password, name, startup_name, role)
+      VALUES (?, '', 'User', '', 'founder')
+    `).run(email);
+
+    user = db.prepare("SELECT * FROM users WHERE id = ?")
       .get(Number(result.lastInsertRowid));
-  } else {
-    const nextName = user.name || decoded.name || "User";
-    const nextProfilePicture =
-      user.profile_picture ||
-      (typeof decoded.picture === "string" ? decoded.picture : null);
-
-    db.prepare(
-      `
-      UPDATE users
-      SET name = ?, profile_picture = COALESCE(?, profile_picture)
-      WHERE id = ?
-    `
-    ).run(nextName, nextProfilePicture, user.id);
-
-    user = db.prepare("SELECT * FROM users WHERE id = ?").get(user.id);
   }
 
   return user;
@@ -425,14 +394,15 @@ async function startServer() {
       }
 
       const token = authHeader.split("Bearer ")[1];
-      const decoded = await admin.auth().verifyIdToken(token);
-      const user = upsertUserFromFirebase(decoded);
+     const decoded: any = jwt.verify(token, SUPABASE_JWT_SECRET, {
+  algorithms: ["HS256"]
+});
+      const user = upsertUserFromToken(decoded);
 
-      req.user = {
-        id: Number(user.id),
-        email: user.email,
-        firebase_uid: decoded.uid,
-      };
+     req.user = {
+  id: Number(user.id),
+  email: user.email
+};
 
       next();
     } catch (err) {
@@ -447,41 +417,41 @@ async function startServer() {
     res.json({ ok: true });
   });
 
-  // Firebase bootstrap after signup/login
-  apiRouter.post("/auth/bootstrap", authenticateToken, (req: AuthRequest, res) => {
-    try {
-      const { name, startup_name, role } = req.body;
-      const safeName = String(name || "").trim();
-      const safeStartupName = String(startup_name || "").trim();
-      const safeRole = String(role || "").trim();
+  // Supabase auth bootstrap
+apiRouter.post("/auth/bootstrap", authenticateToken, (req: AuthRequest, res) => {
+  try {
+    const { name, startup_name, role } = req.body;
 
-      db.prepare(
-        `
-        UPDATE users
-        SET
-          name = CASE WHEN ? != '' THEN ? ELSE name END,
-          startup_name = CASE WHEN ? != '' THEN ? ELSE startup_name END,
-          role = CASE WHEN ? != '' THEN ? ELSE role END
-        WHERE id = ?
-      `
-      ).run(
-        safeName,
-        safeName,
-        safeStartupName,
-        safeStartupName,
-        safeRole,
-        safeRole,
-        req.user!.id
-      );
+    const safeName = String(name || "").trim();
+    const safeStartupName = String(startup_name || "").trim();
+    const safeRole = String(role || "").trim();
 
-      const user = getUserById(req.user!.id);
-      return res.json(user);
-    } catch (error: any) {
-      console.error("POST /api/auth/bootstrap error:", error);
-      return res.status(500).json({ error: "Failed to bootstrap user" });
-    }
-  });
+    db.prepare(`
+      UPDATE users
+      SET
+        name = CASE WHEN ? != '' THEN ? ELSE name END,
+        startup_name = CASE WHEN ? != '' THEN ? ELSE startup_name END,
+        role = CASE WHEN ? != '' THEN ? ELSE role END
+      WHERE id = ?
+    `).run(
+      safeName,
+      safeName,
+      safeStartupName,
+      safeStartupName,
+      safeRole,
+      safeRole,
+      req.user!.id
+    );
 
+    const user = getUserById(req.user!.id);
+
+    return res.json(user);
+
+  } catch (error: any) {
+    console.error("POST /api/auth/bootstrap error:", error);
+    return res.status(500).json({ error: "Failed to bootstrap user" });
+  }
+});
   // Auth/Profile
   apiRouter.get("/auth/me", authenticateToken, (req: AuthRequest, res) => {
     try {

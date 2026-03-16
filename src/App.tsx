@@ -10,7 +10,7 @@ import { Rocket, Send, ShieldAlert, User as UserIcon, MapPin, Link as LinkIcon, 
 import { motion, AnimatePresence } from 'framer-motion';
 import { createPortal } from 'react-dom';
 import { io } from 'socket.io-client';
-const socket = io();
+import { useLocation } from "react-router-dom";
 import SearchPage from "./pages/SearchPage";
 import LeftMiniSidebar from "./components/LeftMiniSidebar";
 import StoriesPage from "./pages/StoriesPage";
@@ -23,14 +23,29 @@ import InvestorList from "./pages/InvestorList";
 import CreateInvestor from "./pages/CreateInvestor";
 import InvestorDetails from "./pages/InvestorDetails";
 import FindPartnerPage from "./pages/FindPartnerPage";
-import { useLocation } from "react-router-dom";
-import { auth } from "./firebase";
-import {
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword
-} from "firebase/auth";
-import { signOut } from "firebase/auth";
-import { onAuthStateChanged } from "firebase/auth";
+
+import { createClient } from "@supabase/supabase-js";
+
+const socket = io("https://founder-feed-final.onrender.com");
+
+const supabase = createClient(
+  "https://zznxbmhlvarkajkkuhqi.supabase.co",
+  "sb_publishable_V9RGqaMWQY-lyR9pB_TQVA_raY0iRYw"
+);;
+const API_URL = "https://founder-feed-final.onrender.com";
+
+async function authFetch(url: string, options: any = {}) {
+  const token = await supabase.auth.getSession().then((res) => res.data.session?.access_token);
+
+  return fetch(`${API_URL}${url}`, {
+    ...options,
+    headers: {
+      ...(options.headers || {}),
+      Authorization: `Bearer ${token}`
+    }
+  });
+}
+
 // --- Components ---
 
 function AuthPage({ onLogin }: { onLogin: (user: User) => void }) {
@@ -43,54 +58,87 @@ function AuthPage({ onLogin }: { onLogin: (user: User) => void }) {
   const [error, setError] = useState('');
   const navigate = useNavigate();
 
-const handleSubmit = async (e: React.FormEvent) => {
-  e.preventDefault();
-  setError("");
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
 
-  try {
-    let userCredential;
+    try {
+      let userCredential;
 
-    if (isLogin) {
-      userCredential = await signInWithEmailAndPassword(auth, email, password);
-    } else {
-      userCredential = await createUserWithEmailAndPassword(auth, email, password);
-    }
+      if (isLogin) {
+       const { data, error } = await supabase.auth.signInWithPassword({
+  email,
+  password
+});
 
-    // Firebase token
-    const token = await userCredential.user.getIdToken();
+if (error) throw error;
 
-    // send token to backend
-    const res = await fetch("/api/auth/bootstrap", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`
-      },
-      body: JSON.stringify({
-        name,
-        startup_name: startup,
-        role
-      })
-    });
+const token = data.session?.access_token;
+      } else {
+        const { data, error } = await supabase.auth.signUp({
+  email,
+  password
+});
 
-    if (!res.ok) {
-      const data = await res.json();
-      setError(data.error || "Authentication failed");
-      return;
-    }
+if (error) throw error;
 
-    const user = await res.json();
-    onLogin(user);
-    navigate("/");
+const token = data.session?.access_token;
+      }
 
-  } catch (err: any) {
-    console.error(err);
-    setError(err.message || "Authentication failed");
-  }
+      const { data } = await supabase.auth.getSession();
+const token = data.session?.access_token;
+
+      const res = await fetch(`${API_URL}/api/auth/bootstrap`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          name,
+          startup_name: startup,
+          role
+        })
+      });
+
+      let userData: any = null;
+
+      try {
+        userData = await res.json();
+      } catch {
+        userData = null;
+      }
+
+      if (!res.ok) {
+        console.warn("Bootstrap failed but continuing login", userData);
+      }
+
+      const { data: sessionData } = await supabase.auth.getSession();
+
+const user = userData || {
+  id: sessionData.session?.user.id,
+  email: sessionData.session?.user.email,
+  name: name || "User",
+  startup_name: startup || "",
+  role: role || "founder",
+  profile_picture: null,
+  bio: "",
+  website: "",
+  location: ""
 };
+
+      onLogin(user as any);
+      navigate("/");
+
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message || "Authentication failed");
+    }
+  };
+
   return (
     <div className="min-h-[80vh] flex items-center justify-center px-4">
-      <motion.div 
+      <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         className="w-full max-w-md bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-3xl p-8 shadow-xl dark:shadow-2xl"
@@ -100,7 +148,7 @@ const handleSubmit = async (e: React.FormEvent) => {
             <Rocket className="w-8 h-8 text-zinc-950" />
           </div>
         </div>
-        
+
         <h1 className="text-2xl font-bold text-center mb-2 text-zinc-900 dark:text-zinc-100">
           {isLogin ? 'Welcome Back' : 'Join the Network'}
         </h1>
@@ -139,6 +187,7 @@ const handleSubmit = async (e: React.FormEvent) => {
               </div>
             </>
           )}
+
           <input
             type="email"
             placeholder="Email Address"
@@ -147,6 +196,7 @@ const handleSubmit = async (e: React.FormEvent) => {
             onChange={(e) => setEmail(e.target.value)}
             className="w-full bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl px-4 py-3 focus:outline-none focus:border-emerald-500 transition-colors text-zinc-900 dark:text-zinc-100"
           />
+
           <input
             type="password"
             placeholder="Password"
@@ -155,10 +205,10 @@ const handleSubmit = async (e: React.FormEvent) => {
             onChange={(e) => setPassword(e.target.value)}
             className="w-full bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl px-4 py-3 focus:outline-none focus:border-emerald-500 transition-colors text-zinc-900 dark:text-zinc-100"
           />
-          
+
           {error && <p className="text-red-500 text-xs text-center">{error}</p>}
 
-          <button 
+          <button
             type="submit"
             className="w-full bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold py-3 rounded-xl transition-colors mt-4"
           >
@@ -167,7 +217,7 @@ const handleSubmit = async (e: React.FormEvent) => {
         </form>
 
         <div className="mt-8 text-center">
-          <button 
+          <button
             onClick={() => {
               setIsLogin(!isLogin);
               setError('');
@@ -206,7 +256,7 @@ function FeedPage({ currentUser }: { currentUser: User | null }) {
 
   const fetchSuggestions = async () => {
     try {
-      const res = await fetch('/api/users/suggested');
+     const res = await authFetch('/api/users/suggested');
       if (res.ok) {
         const data = await res.json();
         setSuggestedUsers(data);
@@ -243,8 +293,7 @@ function FeedPage({ currentUser }: { currentUser: User | null }) {
 
     const currentOffset = reset ? 0 : offset;
     try {
-      const res = await fetch(`/api/posts?limit=10&offset=${currentOffset}`);
-      const contentType = res.headers.get('content-type');
+const res = await authFetch(`/api/posts?limit=10&offset=${currentOffset}`);      const contentType = res.headers.get('content-type');
       const isJson = contentType && contentType.includes('application/json');
 
       if (res.ok) {
@@ -302,10 +351,10 @@ function FeedPage({ currentUser }: { currentUser: User | null }) {
 
     try {
       console.log('Sending POST request to /api/posts');
-      const res = await fetch('/api/posts', {
-        method: 'POST',
-        body: formData,
-      });
+    const res = await authFetch('/api/posts', {
+  method: 'POST',
+  body: formData,
+});
       
       const contentType = res.headers.get('content-type');
       const isJson = contentType && contentType.includes('application/json');
@@ -331,7 +380,7 @@ function FeedPage({ currentUser }: { currentUser: User | null }) {
 
   const handleLike = async (id: number) => {
     try {
-      const res = await fetch(`/api/posts/${id}/like`, { method: 'POST' });
+      const res = await authFetch(`/api/posts/${id}/like`, { method: 'POST' });
       if (res.ok) {
         setPosts(posts.map(p => {
           if (p.id === id) {
@@ -351,7 +400,7 @@ function FeedPage({ currentUser }: { currentUser: User | null }) {
     if (!confirm('Are you sure you want to delete this post?')) return;
     try {
       console.log('Sending DELETE request for post:', id);
-      const res = await fetch(`/api/posts/${id}`, { method: 'DELETE' });
+      const res = await authFetch(`/api/posts/${id}`, { method: 'DELETE' });
       console.log('DELETE response status:', res.status);
       if (res.ok) {
         console.log('Delete successful, updating state');
@@ -369,7 +418,7 @@ function FeedPage({ currentUser }: { currentUser: User | null }) {
 
   const handleEdit = async (id: number, content: string) => {
     try {
-      const res = await fetch(`/api/posts/${id}`, {
+      const res = await authFetch(`/api/posts/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content }),
@@ -386,7 +435,7 @@ function FeedPage({ currentUser }: { currentUser: User | null }) {
     const reason = prompt('Why are you reporting this post?');
     if (!reason) return;
     try {
-      const res = await fetch(`/api/posts/${id}/report`, {
+     const res = await authFetch(`/api/posts/${id}/report`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ reason }),
@@ -552,7 +601,9 @@ function FeedPage({ currentUser }: { currentUser: User | null }) {
                 <button 
                   onClick={async () => {
                     try {
-                      const res = await fetch(`/api/users/${user.id}/co-build`, { method: 'POST' });
+                      const res = await authFetch(`/api/users/${user.id}/co-build`, {
+  method: 'POST'
+});
                       if (res.ok) {
                         setSuggestedUsers(prev => prev.filter(u => u.id !== user.id));
                         setCoBuildings(prev => {
@@ -638,7 +689,7 @@ const [postsLoading, setPostsLoading] = useState(false);
   const fetchUserPosts = async (userId: string | number) => {
   setPostsLoading(true);
   try {
-    const res = await fetch(`/api/posts/user/${userId}`);
+    const res = await authFetch(`/api/posts/user/${userId}`);
     if (res.ok) {
       const data = await res.json();
       setPosts(data);
@@ -656,7 +707,7 @@ const [postsLoading, setPostsLoading] = useState(false);
       try {
         const targetId = id || currentUser?.id;
         if (!targetId) return;
-        const res = await fetch(`/api/users/${targetId}`);
+      const res = await authFetch(`/api/users/${targetId}`);
         if (res.ok) {
           const data = await res.json();
           setUser(data);
@@ -702,7 +753,9 @@ const [postsLoading, setPostsLoading] = useState(false);
     if (!user || !currentUser) return;
     setIsCoBuilding(true);
     try {
-      const res = await fetch(`/api/users/${user.id}/co-build`, { method: 'POST' });
+     const res = await authFetch(`/api/users/${user.id}/co-build`, {
+  method: 'POST'
+});
       if (res.ok) {
         const data = await res.json();
         setUser(prev => prev ? { 
@@ -724,17 +777,16 @@ const [postsLoading, setPostsLoading] = useState(false);
     setSendingMessage(true);
 
     try {
-      const res = await fetch('/api/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          receiver_id: user.id,
-          content: messageText,
-        }),
-      });
-
+     const res = await authFetch('/api/messages', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify({
+    receiver_id: user.id,
+    content: messageText,
+  }),
+});
       if (res.ok) {
         setMessageText('');
         setIsMessageOpen(false);
@@ -761,10 +813,10 @@ const [postsLoading, setPostsLoading] = useState(false);
     else if (formData.profile_picture) data.append('profile_picture', formData.profile_picture);
 
     try {
-      const res = await fetch('/api/profile', {
-        method: 'PUT',
-        body: data,
-      });
+     const res = await authFetch('/api/profile', {
+  method: 'PUT',
+  body: data,
+});
       if (res.ok) {
         const result = await res.json();
         const updatedUser = { ...user!, ...formData, profile_picture: result.profile_picture };
@@ -1080,7 +1132,7 @@ function AdminPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch('/api/admin/reports')
+   authFetch('/api/admin/reports')
       .then(res => {
         if (!res.ok) throw new Error('Failed to fetch reports');
         return res.json();
@@ -1160,20 +1212,23 @@ export default function App() {
   const [unreadCount, setUnreadCount] = useState(0);
 
 useEffect(() => {
-  const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+  const checkSession = async () => {
     try {
-      if (!firebaseUser) {
+      const { data } = await supabase.auth.getSession();
+      const session = data.session;
+
+      if (!session) {
         setUser(null);
         setLoading(false);
         return;
       }
 
-      const token = await firebaseUser.getIdToken();
+      const token = session.access_token;
 
-      const res = await fetch("/api/auth/me", {
+      const res = await fetch(`${API_URL}/api/auth/me`, {
         headers: {
-          Authorization: `Bearer ${token}`,
-        },
+          Authorization: `Bearer ${token}`
+        }
       });
 
       if (res.ok) {
@@ -1189,12 +1244,12 @@ useEffect(() => {
     } finally {
       setLoading(false);
     }
-  });
+  };
 
-  return () => unsubscribe();
+  checkSession();
 }, []);
   const handleLogout = async () => {
-  await signOut(auth);
+  await supabase.auth.signOut();
   setUser(null);
 };
   useEffect(() => {
@@ -1202,7 +1257,7 @@ useEffect(() => {
 
   socket.emit('join', user.id);
 
-  fetch('/api/conversations')
+  authFetch('/api/conversations')
     .then(res => res.json())
     .then(data => {
       const totalUnread = data.reduce(
