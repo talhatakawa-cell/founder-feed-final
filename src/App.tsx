@@ -23,15 +23,12 @@ import InvestorList from "./pages/InvestorList";
 import CreateInvestor from "./pages/CreateInvestor";
 import InvestorDetails from "./pages/InvestorDetails";
 import FindPartnerPage from "./pages/FindPartnerPage";
+import { supabase } from "./lib/supabase";
 
-import { createClient } from "@supabase/supabase-js";
+
 
 const socket = io("https://founder-feed-final.onrender.com");
 
-const supabase = createClient(
-  "https://zznxbmhlvarkajkkuhqi.supabase.co",
-  "sb_publishable_V9RGqaMWQY-lyR9pB_TQVA_raY0iRYw"
-);;
 const API_URL = "https://founder-feed-final.onrender.com";
 
 async function authFetch(url: string, options: any = {}) {
@@ -65,25 +62,14 @@ function AuthPage({ onLogin }: { onLogin: (user: User) => void }) {
     try {
       let userCredential;
 
-      if (isLogin) {
-       const { data, error } = await supabase.auth.signInWithPassword({
-  email,
-  password
-});
+ if (isLogin) {
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email,
+    password
+  });
 
-if (error) throw error;
-
-const token = data.session?.access_token;
-      } else {
-        const { data, error } = await supabase.auth.signUp({
-  email,
-  password
-});
-
-if (error) throw error;
-
-const token = data.session?.access_token;
-      }
+  if (error) throw error;
+}
 
       const { data } = await supabase.auth.getSession();
 const token = data.session?.access_token;
