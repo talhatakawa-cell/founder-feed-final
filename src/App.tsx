@@ -32,15 +32,25 @@ const socket = io("https://founder-feed-final.onrender.com");
 const API_URL = "https://founder-feed-final.onrender.com";
 
 async function authFetch(url: string, options: any = {}) {
-  const token = await supabase.auth.getSession().then((res) => res.data.session?.access_token);
+
+  const { data } = await supabase.auth.getSession();
+
+  const token = data?.session?.access_token;
+
+  const headers: Record<string, string> = {
+    ...(options.headers || {}),
+    Authorization: `Bearer ${token || ""}`,
+  };
+
+  if (!(options.body instanceof FormData) && !headers["Content-Type"]) {
+    headers["Content-Type"] = "application/json";
+  }
 
   return fetch(`${API_URL}${url}`, {
     ...options,
-    headers: {
-      ...(options.headers || {}),
-      Authorization: `Bearer ${token}`
-    }
+    headers
   });
+
 }
 
 // --- Components ---
@@ -60,31 +70,40 @@ function AuthPage({ onLogin }: { onLogin: (user: User) => void }) {
     setError("");
 
     try {
-      let userCredential;
+      if (isLogin) {
+        const { error } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
 
- if (isLogin) {
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email,
-    password
-  });
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.auth.signUp({
+          email,
+          password,
+        });
 
-  if (error) throw error;
-}
+        if (error) throw error;
+      }
 
       const { data } = await supabase.auth.getSession();
-const token = data.session?.access_token;
+      const token = data.session?.access_token;
+
+      if (!token) {
+        throw new Error("No access token found. Confirm email may be required.");
+      }
 
       const res = await fetch(`${API_URL}/api/auth/bootstrap`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           name,
           startup_name: startup,
-          role
-        })
+          role,
+        }),
       });
 
       let userData: any = null;
@@ -95,27 +114,12 @@ const token = data.session?.access_token;
         userData = null;
       }
 
-      if (!res.ok) {
-        console.warn("Bootstrap failed but continuing login", userData);
+      if (!res.ok || !userData) {
+        throw new Error(userData?.error || "Failed to bootstrap user");
       }
 
-      const { data: sessionData } = await supabase.auth.getSession();
-
-const user = userData || {
-  id: sessionData.session?.user.id,
-  email: sessionData.session?.user.email,
-  name: name || "User",
-  startup_name: startup || "",
-  role: role || "founder",
-  profile_picture: null,
-  bio: "",
-  website: "",
-  location: ""
-};
-
-      onLogin(user as any);
+      onLogin(userData);
       navigate("/");
-
     } catch (err: any) {
       console.error(err);
       setError(err.message || "Authentication failed");

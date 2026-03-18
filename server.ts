@@ -310,13 +310,15 @@ function getUserById(id: number) {
 
 function upsertUserFromToken(decoded: any) {
 
-  const email = decoded.email;
+  const email = decoded.email || decoded.user_email;
 
   if (!email) {
     throw new Error("Token does not include email");
   }
 
-  let user: any = db.prepare("SELECT * FROM users WHERE email = ?").get(email);
+  let user: any = db
+    .prepare("SELECT * FROM users WHERE email = ?")
+    .get(email);
 
   if (!user) {
 
@@ -325,13 +327,13 @@ function upsertUserFromToken(decoded: any) {
       VALUES (?, '', 'User', '', 'founder')
     `).run(email);
 
-    user = db.prepare("SELECT * FROM users WHERE id = ?")
+    user = db
+      .prepare("SELECT * FROM users WHERE id = ?")
       .get(Number(result.lastInsertRowid));
   }
 
   return user;
 }
-
 async function startServer() {
   const app = express();
   app.set("trust proxy", 1);
@@ -393,10 +395,8 @@ async function startServer() {
         return res.status(401).json({ error: "Unauthorized" });
       }
 
-      const token = authHeader.split("Bearer ")[1];
-     const decoded: any = jwt.verify(token, SUPABASE_JWT_SECRET, {
-  algorithms: ["HS256"]
-});
+     const token = authHeader.replace("Bearer ", "");
+     const decoded: any = jwt.verify(token, SUPABASE_JWT_SECRET);
       const user = upsertUserFromToken(decoded);
 
      req.user = {
