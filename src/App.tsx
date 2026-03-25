@@ -10,47 +10,51 @@ import { Rocket, Send, ShieldAlert, User as UserIcon, MapPin, Link as LinkIcon, 
 import { motion, AnimatePresence } from 'framer-motion';
 import { createPortal } from 'react-dom';
 import { io } from 'socket.io-client';
-import { useLocation } from "react-router-dom";
-import SearchPage from "./pages/SearchPage";
-import LeftMiniSidebar from "./components/LeftMiniSidebar";
-import StoriesPage from "./pages/StoriesPage";
-import NewStoryPage from "./pages/NewStoryPage";
-import StoryDetailPage from "./pages/StoryDetailPage";
-import QAPage from "./pages/QAPage";
-import AskQuestionPage from "./pages/AskQuestionPage";
-import QuestionDetailPage from "./pages/QuestionDetailPage";
-import InvestorList from "./pages/InvestorList";
-import CreateInvestor from "./pages/CreateInvestor";
-import InvestorDetails from "./pages/InvestorDetails";
-import FindPartnerPage from "./pages/FindPartnerPage";
-import { supabase } from "./lib/supabase";
+import { useLocation } from 'react-router-dom';
+import SearchPage from './pages/SearchPage';
+import LeftMiniSidebar from './components/LeftMiniSidebar';
+import StoriesPage from './pages/StoriesPage';
+import NewStoryPage from './pages/NewStoryPage';
+import StoryDetailPage from './pages/StoryDetailPage';
+import QAPage from './pages/QAPage';
+import AskQuestionPage from './pages/AskQuestionPage';
+import QuestionDetailPage from './pages/QuestionDetailPage';
+import InvestorList from './pages/InvestorList';
+import CreateInvestor from './pages/CreateInvestor';
+import InvestorDetails from './pages/InvestorDetails';
+import FindPartnerPage from './pages/FindPartnerPage';
+import { supabase } from './lib/supabase';
 
+console.log('SUPABASE URL:', import.meta.env.VITE_SUPABASE_URL);
 
+const socket = io('https://founder-feed-final-4.onrender.com');
+const API_URL = 'https://founder-feed-final-4.onrender.com';
 
-const socket = io("https://founder-feed-final.onrender.com");
+async function authFetch(url: string, options: RequestInit = {}) {
+  const { data, error } = await supabase.auth.getSession();
 
-const API_URL = "https://founder-feed-final.onrender.com";
-
-async function authFetch(url: string, options: any = {}) {
-
-  const { data } = await supabase.auth.getSession();
+  if (error) {
+    throw new Error(error.message || 'Failed to get session');
+  }
 
   const token = data?.session?.access_token;
 
-  const headers: Record<string, string> = {
-    ...(options.headers || {}),
-    Authorization: `Bearer ${token || ""}`,
-  };
+  if (!token) {
+    throw new Error('User is not authenticated');
+  }
 
-  if (!(options.body instanceof FormData) && !headers["Content-Type"]) {
-    headers["Content-Type"] = "application/json";
+  const headers = new Headers(options.headers || {});
+
+  headers.set('Authorization', `Bearer ${token}`);
+
+  if (!(options.body instanceof FormData) && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
   }
 
   return fetch(`${API_URL}${url}`, {
     ...options,
-    headers
+    headers,
   });
-
 }
 
 // --- Components ---
@@ -63,46 +67,66 @@ function AuthPage({ onLogin }: { onLogin: (user: User) => void }) {
   const [startup, setStartup] = useState('');
   const [role, setRole] = useState('');
   const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError("");
+    setError('');
+    setIsSubmitting(true);
 
     try {
+      let token: string | null = null;
+
       if (isLogin) {
-        const { error } = await supabase.auth.signInWithPassword({
+        const { data, error } = await supabase.auth.signInWithPassword({
           email,
           password,
         });
 
-        if (error) throw error;
+        if (error) {
+          throw error;
+        }
+
+        if (!data.session) {
+          throw new Error('No session returned after login');
+        }
+
+        token = data.session.access_token;
+        console.log('LOGIN SUCCESS:', token);
       } else {
-        const { error } = await supabase.auth.signUp({
+        const { data, error } = await supabase.auth.signUp({
           email,
           password,
         });
 
-        if (error) throw error;
+        if (error) {
+          throw error;
+        }
+
+        if (!data.session) {
+          setError('Signup successful. Please check your email to confirm your account.');
+          return;
+        }
+
+        token = data.session.access_token;
+        console.log('SIGNUP SUCCESS:', token);
       }
 
-      const { data } = await supabase.auth.getSession();
-      const token = data.session?.access_token;
-
       if (!token) {
-        throw new Error("No access token found. Confirm email may be required.");
+        throw new Error('No access token found');
       }
 
       const res = await fetch(`${API_URL}/api/auth/bootstrap`, {
-        method: "POST",
+        method: 'POST',
         headers: {
-          "Content-Type": "application/json",
+          'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          name,
-          startup_name: startup,
-          role,
+          name: name.trim(),
+          startup_name: startup.trim(),
+          role: role.trim(),
         }),
       });
 
@@ -115,14 +139,16 @@ function AuthPage({ onLogin }: { onLogin: (user: User) => void }) {
       }
 
       if (!res.ok || !userData) {
-        throw new Error(userData?.error || "Failed to bootstrap user");
+        throw new Error(userData?.error || 'Failed to bootstrap user');
       }
 
       onLogin(userData);
-      navigate("/");
+      navigate('/');
     } catch (err: any) {
-      console.error(err);
-      setError(err.message || "Authentication failed");
+      console.error('AUTH ERROR:', err);
+      setError(err.message || 'Authentication failed');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 

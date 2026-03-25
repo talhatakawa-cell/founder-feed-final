@@ -10,8 +10,7 @@ import fs from "fs";
 import cors from "cors";
 import jwt from "jsonwebtoken";
 
-const SUPABASE_JWT_SECRET = "NI2AZvKXLRS+w0Npdil2C7ZqAFO5RcyfFrLHU8pm6MyEAs3vd1ViL6l91RYJv//2FOZKFLBQhhsTFZ0OBYCqUQ==";
-
+const SUPABASE_JWT_SECRET = process.env.SUPABASE_JWT_SECRET!;
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -396,7 +395,9 @@ async function startServer() {
       }
 
      const token = authHeader.replace("Bearer ", "");
-     const decoded: any = jwt.verify(token, SUPABASE_JWT_SECRET);
+     const decoded: any = jwt.verify(token, SUPABASE_JWT_SECRET, {
+  algorithms: ['HS256'],
+});
       const user = upsertUserFromToken(decoded);
 
      req.user = {
