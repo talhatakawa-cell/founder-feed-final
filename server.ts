@@ -395,8 +395,8 @@ async function startServer() {
       }
 
      const token = authHeader.replace("Bearer ", "");
-     const decoded: any = jwt.verify(token, SUPABASE_JWT_SECRET, {
-  algorithms: ['HS256'],
+  const decoded: any = jwt.verify(token, SUPABASE_JWT_SECRET, {
+  algorithms: ['HS256', 'ES256'],
 });
       const user = upsertUserFromToken(decoded);
 
