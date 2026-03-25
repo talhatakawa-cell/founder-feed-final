@@ -382,51 +382,36 @@ async function startServer() {
     next();
   });
 
-  const authenticateToken = async (
+const authenticateToken = async (
   req: AuthRequest,
   res: express.Response,
   next: express.NextFunction
 ) => {
   try {
     const authHeader = req.headers.authorization;
-
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
       return res.status(401).json({ error: "Unauthorized" });
     }
 
     const token = authHeader.replace("Bearer ", "");
-    
-    // Supabase JWKS URL থেকে public key নিয়ে verify করো
-    const SUPABASE_URL = process.env.SUPABASE_URL!;
-    
-    const header = JSON.parse(
-      Buffer.from(token.split('.')[0], 'base64').toString()
+
+    // JWT verify বাদ দিয়ে সরাসরি Supabase এ check
+    const { createClient } = await import('@supabase/supabase-js');
+    const supabase = createClient(
+      process.env.SUPABASE_URL!,
+      process.env.SUPABASE_ANON_KEY!
     );
-    
-    const jwksRes = await fetch(`${SUPABASE_URL}/auth/v1/.well-known/jwks.json`);
-    const jwks = await jwksRes.json();
-    
-    const jwk = jwks.keys.find((k: any) => k.kid === header.kid);
-    
-    if (!jwk) {
-      return res.status(401).json({ error: "Invalid token: key not found" });
-    }
-    
-    const publicKey = await crypto.subtle.importKey(
-      'jwk',
-      jwk,
-      { name: 'ECDSA', namedCurve: 'P-256' },
-      true,
-      ['verify']
-    );
-    
-    const decoded: any = jwt.decode(token);
-    
-    if (!decoded || decoded.exp < Date.now() / 1000) {
-      return res.status(401).json({ error: "Token expired" });
+
+    const { data, error } = await supabase.auth.getUser(token);
+
+    if (error || !data.user) {
+      return res.status(401).json({ error: "Invalid token" });
     }
 
-    const user = upsertUserFromToken(decoded);
+    const user = upsertUserFromToken({
+      email: data.user.email,
+      sub: data.user.id
+    });
 
     req.user = {
       id: Number(user.id),
