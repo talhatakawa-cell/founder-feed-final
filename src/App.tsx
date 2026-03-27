@@ -28,7 +28,7 @@ import { supabase } from './lib/supabase';
 console.log('SUPABASE URL:', import.meta.env.VITE_SUPABASE_URL);
 
 const socket = io('https://founder-feed-final-4.onrender.com');
-const API_URL = import.meta.env.VITE_API_URL || 'https://founder-feed-final-4.onrender.com';
+const API_URL = "https://founder-feed-final-4.onrender.com";
 
 async function authFetch(url: string, options: RequestInit = {}) {
   const { data, error } = await supabase.auth.getSession();
