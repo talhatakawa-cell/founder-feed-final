@@ -1,8 +1,10 @@
+Set-Content netlify.toml @"
 [[redirects]]
   from = "/api/*"
   to = "https://founder-feed-final-4.onrender.com/api/:splat"
   status = 200
   force = true
+  headers = {X-Forwarded-For = "client"}
 
 [[redirects]]
   from = "/uploads/*"
@@ -14,3 +16,4 @@
   from = "/*"
   to = "/index.html"
   status = 200
+"@
