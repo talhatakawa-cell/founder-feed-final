@@ -29,14 +29,6 @@ console.log('SUPABASE URL:', import.meta.env.VITE_SUPABASE_URL);
 
 const socket = io('https://founder-feed-final-4.onrender.com');
 const API_URL = import.meta.env.VITE_API_URL || 'https://founder-feed-final-4.onrender.com';
-```
-
-## Netlify এ Environment Variable add করো:
-
-Netlify → **Site Configuration** → **Environment Variables** → **Add variable**:
-```
-Key:   VITE_API_URL
-Value: https://founder-feed-final-4.onrender.com
 
 async function authFetch(url: string, options: RequestInit = {}) {
   const { data, error } = await supabase.auth.getSession();
